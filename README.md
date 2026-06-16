@@ -1,128 +1,127 @@
-# FER2013 — Facial Expression Recognition Challenge
+# FER2013 — სახის გამომეტყველების ამოცნობა
 
-Kaggle competition: [Challenges in Representation Learning: Facial Expression Recognition](https://www.kaggle.com/competitions/challenges-in-representation-learning-facial-expression-recognition-challenge)
+Kaggle კომპეტიცია: [Challenges in Representation Learning: Facial Expression Recognition Challenge](https://www.kaggle.com/competitions/challenges-in-representation-learning-facial-expression-recognition-challenge)
 
-**WandB project:** `fer2013` — all runs logged there  
-**Dataset:** 48×48 grayscale images, 7 emotions, ~35,887 samples
+WandB პროექტი: [fer2013](https://wandb.ai/ashos22-free-university-of-tbilisi-/fer2013)
+
+GitHub: [fer2013-facial-expression](https://github.com/AvtandilSh1/fer2013-facial-expression)
 
 ---
 
-## Repository Structure
+## რეპოზიტორიის სტრუქტურა
 
 ```
 fer2013-facial-expression/
-├── arch1_tiny_cnn.ipynb           # Architecture 1 — underfit baseline
-├── arch2_medium_cnn.ipynb         # Architecture 2 — overfit → regularize
-├── arch3_deep_cnn.ipynb           # Architecture 3 — residual blocks
-├── arch4_transfer_learning.ipynb  # Architecture 4 — MobileNetV2
+├── arch1_tiny_cnn.ipynb           # არქიტექტურა 1 — TinyCNN
+├── arch2_medium_cnn.ipynb         # არქიტექტურა 2 — MediumCNN
+├── arch3_deep_cnn.ipynb           # არქიტექტურა 3 — DeepCNN
+├── arch4_transfer_learning.ipynb  # არქიტექტურა 4 — MobileNetV2
 └── README.md
 ```
 
 ---
 
-## Results Summary
+## მონაცემთა ბაზა
 
-| Architecture | Best Val Acc | Notes |
+FER2013 — 48x48 პიქსელის გრეისქეილ სურათები, 7 კლასი, ~35,887 ნიმუში.
+
+| კლასი | ემოცია |
+|---|---|
+| 0 | Angry |
+| 1 | Disgust |
+| 2 | Fear |
+| 3 | Happy |
+| 4 | Sad |
+| 5 | Surprise |
+| 6 | Neutral |
+
+---
+
+## შედეგების შეჯამება
+
+| არქიტექტურა | საუკეთესო Val Acc | შენიშვნა |
 |---|---|---|
-| TinyCNN | ~45% | Underfit — too small |
-| MediumCNN (no dropout) | ~58% | Overfit — train>>val |
-| MediumCNN (regularized) | ~62% | Dropout + augment |
-| DeepCNN (residual) | ~65% | Residual blocks + GAP |
-| MobileNetV2 fine-tuned | ~68% | Best overall |
+| TinyCNN | ~45% | Underfit |
+| MediumCNN (Dropout-ის გარეშე) | ~58% | Overfit |
+| MediumCNN (რეგულარიზებული) | ~62% | Dropout + Augmentation |
+| DeepCNN (Residual) | ~65% | Residual Blocks + GAP |
+| MobileNetV2 (Fine-tuned) | ~68% | საუკეთესო შედეგი |
 
 ---
 
-## Architecture Decisions
+## არქიტექტურული გადაწყვეტილებები
 
-### Architecture 1: TinyCNN
+### არქიტექტურა 1: TinyCNN
 
-**Decision:** 2 conv layers with 8 and 16 filters. No BatchNorm, no Dropout.
+მხოლოდ 2 conv layer, 8 და 16 ფილტრი. BatchNorm და Dropout არ არის.
 
-**Why:** Establishing an intentional underfit baseline. A model that cannot even fit training data shows us the minimum capacity threshold needed.
+მიზანი: განზრახ underfitting-ის საბაზო ხაზის დემონსტრაცია. მოდელს არ გააჩნია საკმარისი სიმძლავრე სასწავლო მონაცემების დასამახსოვრებლად.
 
-**Result:** Train ~55%, Val ~45%. Small train/val gap confirms underfitting (not overfitting). The model lacks capacity, not regularization.
+შედეგი: train ~55%, val ~45%. პატარა სხვაობა train/val შორის = underfit (არა overfit). მოდელს არ ყოფნის სიმძლავრე და არა რეგულარიზაცია.
 
-**What we learned:** Need at least 4 conv layers and BatchNorm to train stably on this task.
+### არქიტექტურა 2: MediumCNN
 
----
+4 conv layer (32→64→128→256 ფილტრი) + BatchNorm თითოეული conv-ის შემდეგ.
 
-### Architecture 2: MediumCNN
+BatchNorm: ნორმალიზებს აქტივაციებს mini-batch-ის მიხედვით, დააჩქარებს სწავლებას.
 
-**Decision:** 4 conv layers (32→64→128→256 filters) + BatchNorm after each conv.
+ექსპერიმენტი A (Dropout-ის გარეშე): train ~80-85%, val ~58%. ტექსტური overfit — მოდელი ამახსოვრებს სასწავლო მონაცემებს. მიზეზი: დიდი FC head ~1.2M პარამეტრით, რეგულარიზაციის გარეშე.
 
-**Why BatchNorm:** Normalizes activations per mini-batch → faster convergence, acts as mild regularization, allows higher learning rates.
+ექსპერიმენტი B (Dropout=0.5): train/val სხვაობა მნიშვნელოვნად მცირდება.
 
-**Experiment A (no Dropout):** Train reaches 80-85%, Val plateaus at ~58%. This is textbook overfitting — the model memorized training data instead of learning general features. Root cause: 4 wide layers with ~1.2M parameters in the FC head and no regularization.
+ექსპერიმენტი C (+Augmentation): RandomFlip, RandomRotation, RandomCrop — კიდევ უმჯობესდება.
 
-**Experiment B (Dropout=0.5):** Single change. The train/val gap shrinks significantly. Dropout forces the network to use redundant features → less memorization.
+ექსპერიმენტი D (+Class weights + Cosine LR): FER2013 არაბალანსირებულია (Happy 3x მეტია Disgust-ზე). Class weights უმცირეს კლასებს ეხმარება.
 
-**Experiment C (+ augmentation):** Each epoch the model sees different variations of each image (flipped, rotated, cropped). Effectively multiplies training data diversity → further improvement.
+### არქიტექტურა 3: DeepCNN (Residual Blocks)
 
-**Experiment D (+ class weights + cosine LR):** FER2013 is imbalanced (Happy has 3× more samples than Disgust). Class weights penalize errors on minority classes more. Cosine LR prevents oscillation in the final training phase.
+3-ეტაპიანი residual ქსელი Global Average Pooling-ით.
 
-**Remaining problem:** The FC head (`Flatten → 2304 → FC(512)`) still has too many parameters. This is the main remaining source of overfit.
+Residual კავშირები: `output = F(x) + x`. Gradient-ი პირდაპირ გადის skip connection-ით, ადრეული layer-ებიც იღებენ სათანადო gradient-ს. Backward pass-ის შემოწმება ამ ეფექტს ადასტურებს.
 
----
+GAP MediumCNN-ის FC head-ის ნაცვლად:
+- MediumCNN head: Flatten → FC(512) = 1.18M პარამეტრი
+- DeepCNN head: GAP → Linear(512→7) = 3,591 პარამეტრი
+- 330x ნაკლები პარამეტრი head-ში = ნაკლები overfit
 
-### Architecture 3: DeepCNN (Residual Blocks)
+### არქიტექტურა 4: TransferMobileNet (MobileNetV2)
 
-**Decision:** 3-stage residual network with Global Average Pooling.
+ImageNet-ზე წინასწარ გავარჯიშებული MobileNetV2, FER2013-ზე ადაპტირებული.
 
-**Why residual connections:** Without skip connections, deep networks suffer from vanishing gradients — gradient magnitude decreases exponentially with depth. The residual formula `output = F(x) + x` provides a direct gradient highway from output to early layers. Verified in backward pass check: stem layer gradients are similar magnitude to classifier gradients.
+პირველი conv ჩანაცვლდება 3-channel-იდან 1-channel-ზე. წინასწარი RGB წონები საშუალოდ ინიციალდება.
 
-**Why Global Average Pooling instead of Flatten+FC:**
-- MediumCNN head: `Flatten → 2304 → FC(512)` = **1.18M parameters**
-- DeepCNN head: `GAP → Dropout → Linear(512→7)` = **3,591 parameters**
-- 330× fewer head parameters → dramatically less overfit in the classification layer
+ორფაზიანი სწავლება:
+- Phase 1: backbone გაყინულია, მხოლოდ head სწავლობს. მიზეზი: randomly initialized head-ს დიდი gradient-ები აქვს, რომლებიც pretrained წონებს გაანადგურებდა.
+- Phase 2: LR=1e-4 (10x პატარა). pretrained წონები უკვე კარგ წერტილშია, დიდი ნაბიჯები გაანადგურებდა მათ.
 
-**Why Dropout only in the final layer (0.4):** The convolutional backbone is already regularized by BatchNorm and augmentation. Heavy dropout in conv layers hurts performance on small datasets.
-
-**Batch size experiment:** Doubling batch_size from 64→128 requires scaling LR by ~2× (linear scaling rule) to maintain equivalent gradient step size. Larger batches converge faster per epoch but may find sharper loss minima.
-
----
-
-### Architecture 4: TransferMobileNet (MobileNetV2)
-
-**Why MobileNetV2:** Pretrained on 1.2M ImageNet images. Early layers learned universal visual features (edges, textures, shapes) that transfer well to faces. MobileNetV2 chosen over ResNet50 for efficiency (3.4M vs 25M params) given Kaggle GPU constraints.
-
-**Grayscale adaptation:** MobileNetV2's first conv expects 3-channel input. We replace it with a 1-channel conv and initialize it by averaging the 3 pretrained RGB weight channels. This is better than random initialization — we preserve the learned edge detectors.
-
-**Why two-phase training:**
-- Phase 1 (frozen backbone): The new classifier head is randomly initialized → produces large gradients in early training. If we unfreeze the backbone immediately, these large gradients would corrupt the pretrained features. Training only the head first stabilizes it.
-- Phase 2 (LR=1e-4): 10× smaller learning rate than Phase 1. Pretrained weights are already near a good solution — large LR steps would destroy them. Small steps gently adapt backbone features to the FER2013 domain.
-
-**Control experiment (no pretrained weights):** MobileNetV2 architecture trained from scratch achieved ~63%, vs ~68% with pretraining. The ~5% gap is the direct value of ImageNet pretraining on this task.
+კონტროლი (scratch-დან): MobileNetV2 pretrained weights-ის გარეშე ~63%, pretrained-ით ~68%. სხვაობა = transfer learning-ის სარგებელი.
 
 ---
 
-## Forward & Backward Pass Checks
+## Forward და Backward Pass შემოწმება
 
-Performed before every training run:
+თითოეული სწავლების დაწყებამდე:
 
-**Forward pass:** Feeds 4 random tensors through the model, verifies:
-- Output shape is `(4, 7)` — one logit per class
-- No NaN or Inf values
+Forward pass: 4 random tensor გადის მოდელში. შემოწმება: output shape = (4,7), NaN/Inf არ არის.
 
-**Backward pass:** One dummy forward + backward pass, verifies:
-- All trainable layers receive gradients (no dead layers)
-- Gradient flow plot shows gradients are balanced across depth
-- For Architecture 3: residual connections visibly equalize gradient magnitudes
+Backward pass: ერთი dummy forward+backward pass. შემოწმება: ყველა layer-ი იღებს gradient-ს, gradient flow plot აჩვენებს ბალანსს.
 
-**Exception for Architecture 4 Phase 1:** Backbone layers intentionally have NO gradient (they are frozen). This is the expected and correct behavior.
+არქიტექტურა 4 Phase 1-ისთვის: backbone layer-ებს gradient-ი არ აქვთ — ეს სწორია და მოსალოდნელი.
 
 ---
 
-## WandB Logging Structure
+## WandB ლოგირების სტრუქტურა
 
-Each experiment = one WandB run. All runs in project `fer2013`.
+თითოეული ექსპერიმენტი = ცალკე WandB run. ყველა run პროექტ `fer2013`-ში.
 
-Logged per epoch:
+თითოეულ epoch-ზე:
 - `train/loss`, `train/accuracy`
 - `val/loss`, `val/accuracy`
-- `grad_norm` — backward pass health monitor
-- `learning_rate` — tracks scheduler behavior
+- `grad_norm`
+- `learning_rate`
 
-Logged per run (summary):
+Run-ის ბოლოს:
 - `best_val_accuracy`
-- Confusion matrix (WandB Table)
-- Run config (architecture, lr, dropout, batch_size, etc.)
+- confusion matrix
+- run config
+
