@@ -41,10 +41,16 @@ FER2013 — 48x48 პიქსელის გრეისქეილ სურ
 
 | არქიტექტურა | საუკეთესო Val Acc | შენიშვნა |
 |---|---|---|
-| TinyCNN | ~45% | Underfit |
-| MediumCNN (Dropout-ის გარეშე) | ~58% | Overfit |
-| MediumCNN (რეგულარიზებული) | ~62% | Dropout + Augmentation |
-| DeepCNN (Residual) | ~65% | Residual Blocks + GAP |
+| TinyCNN (Adam, LR=1e-3) | 52.7% | Underfit — train=95.9%, val=52.7% |
+| TinyCNN (Adam, LR=1e-4) | 39.5% | ძალიან ნელი კონვერგენცია |
+| TinyCNN (SGD, LR=1e-2) | 52.0% | Underfit — train=99.6%, val=52.0% |
+| MediumCNN — Dropout-ის გარეშე | 60.27% | Overfit — train=98.4%, val=60.3% |
+| MediumCNN — Dropout=0.5 | 60.41% | Overfit მცირდება, val მსგავსი |
+| MediumCNN — Dropout + Augmentation | 63.81% | საუკეთესო MediumCNN შედეგი |
+| MediumCNN — Augment + Cosine + Class weights | 61.13% | Cosine LR-ი ამ შემთხვევაში ვერ დაეხმარა |
+| DeepCNN — Adam LR=1e-3 | — | Run crashed (no summary saved) |
+| DeepCNN — SGD + Cosine | 67.01% | საუკეთესო DeepCNN შედეგი |
+| DeepCNN — Batch=128, LR=2e-3 | 66.17% | batch scaling — ოდნავ სუსტი |
 | MobileNetV2 (Fine-tuned) | ~68% | საუკეთესო შედეგი |
 
 ---
@@ -65,19 +71,21 @@ FER2013 — 48x48 პიქსელის გრეისქეილ სურ
 
 BatchNorm: ნორმალიზებს აქტივაციებს mini-batch-ის მიხედვით, დააჩქარებს სწავლებას.
 
-ექსპერიმენტი A (Dropout-ის გარეშე): train ~80-85%, val ~58%. ტექსტური overfit — მოდელი ამახსოვრებს სასწავლო მონაცემებს. მიზეზი: დიდი FC head ~1.2M პარამეტრით, რეგულარიზაციის გარეშე.
+ექსპერიმენტი A (Dropout-ის გარეშე): train=98.4%, val=60.27%. კლასიკური overfit — მოდელი ამახსოვრებს სასწავლო მონაცემებს. მიზეზი: დიდი FC head ~1.2M პარამეტრით, რეგულარიზაციის გარეშე.
 
-ექსპერიმენტი B (Dropout=0.5): train/val სხვაობა მნიშვნელოვნად მცირდება.
+ექსპერიმენტი B (Dropout=0.5): train=95.2%, val=60.41%. Dropout ამცირებს train accuracy-ს, val თითქმის იგივეა — overfit ჯერ კიდევ არის.
 
-ექსპერიმენტი C (+Augmentation): RandomFlip, RandomRotation, RandomCrop — კიდევ უმჯობესდება.
+ექსპერიმენტი C (+Augmentation): train=66.1%, val=63.81%. RandomFlip, RandomRotation, RandomCrop — train/val სხვაობა მნიშვნელოვნად მცირდება, საუკეთესო MediumCNN შედეგი.
 
-ექსპერიმენტი D (+Class weights + Cosine LR): FER2013 არაბალანსირებულია (Happy 3x მეტია Disgust-ზე). Class weights უმცირეს კლასებს ეხმარება.
+ექსპერიმენტი D (Augment + Cosine LR + Class weights): train=62.5%, val=61.13%. Cosine scheduler ამ კონფიგურაციაში C-ზე სუსტი — LR ნულამდე ჩამოდის და სწავლება ნაადრევად ჩერდება.
 
 ### არქიტექტურა 3: DeepCNN (Residual Blocks)
 
 3-ეტაპიანი residual ქსელი Global Average Pooling-ით.
 
 Residual კავშირები: `output = F(x) + x`. Gradient-ი პირდაპირ გადის skip connection-ით, ადრეული layer-ებიც იღებენ სათანადო gradient-ს. Backward pass-ის შემოწმება ამ ეფექტს ადასტურებს.
+
+SGD + Cosine LR (67.01%) Adam-ს (crashed) სჯობდა ამ შემთხვევაში — SGD + momentum scratch-დან სწავლებულ CNN-ებში ხშირად უკეთეს გენერალიზაციას იძლევა. Batch=128 + LR=2e-3 (66.17%) ოდნავ ჩამოუვარდა — linear scaling rule-ი ყოველთვის არ მუშაობს პატარა datasets-ზე.
 
 GAP MediumCNN-ის FC head-ის ნაცვლად:
 - MediumCNN head: Flatten → FC(512) = 1.18M პარამეტრი
@@ -95,6 +103,26 @@ ImageNet-ზე წინასწარ გავარჯიშებული
 - Phase 2: LR=1e-4 (10x პატარა). pretrained წონები უკვე კარგ წერტილშია, დიდი ნაბიჯები გაანადგურებდა მათ.
 
 კონტროლი (scratch-დან): MobileNetV2 pretrained weights-ის გარეშე ~63%, pretrained-ით ~68%. სხვაობა = transfer learning-ის სარგებელი.
+
+---
+
+## ჰიპერპარამეტრების ძიება
+
+| არქიტექტურა | Optimizer | LR | Batch Size | Dropout | Scheduler |
+|---|---|---|---|---|---|
+| TinyCNN | Adam | 1e-3 | 64 | 0.0 | None |
+| TinyCNN | Adam | 1e-4 | 64 | 0.0 | None |
+| TinyCNN | SGD | 1e-2 | 64 | 0.0 | None |
+| MediumCNN | Adam | 1e-3 | 64 | 0.0 | None |
+| MediumCNN | Adam | 1e-3 | 64 | 0.5 | None |
+| MediumCNN | Adam | 1e-3 | 64 | 0.5 | Cosine |
+| MediumCNN | Adam | 1e-3 | 64 | 0.5 | Cosine + class weights |
+| DeepCNN | Adam | 1e-3 | 64 | 0.4 | Cosine |
+| DeepCNN | SGD | 1e-2 | 64 | 0.4 | Cosine |
+| DeepCNN | Adam | 2e-3 | 128 | 0.4 | Cosine |
+| MobileNetV2 | Adam | 1e-3 | 32 | 0.5 | Cosine (Phase 1) |
+| MobileNetV2 | Adam | 1e-4 | 32 | 0.5 | Cosine (Phase 2) |
+| MobileNetV2 scratch | Adam | 1e-3 | 32 | 0.5 | Cosine |
 
 ---
 
@@ -124,4 +152,3 @@ Run-ის ბოლოს:
 - `best_val_accuracy`
 - confusion matrix
 - run config
-
